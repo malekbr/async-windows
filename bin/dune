@@ -1,0 +1,4 @@
+(executable
+ (name example)
+ (libraries core_kernel async_windows)
+ (preprocess (pps ppx_jane)))

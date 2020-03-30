@@ -1,0 +1,6 @@
+(library
+ (name core_windows)
+ (libraries threads core_kernel expect_test_helpers_kernel)
+ (inline_tests)
+ (foreign_stubs (language c) (names c_stubs time_cstubs environment_cstubs process_cstubs))
+ (preprocess (pps ppx_jane ppx_inline_test)))

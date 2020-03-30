@@ -1,0 +1,4 @@
+(executables
+ (libraries core_windows)
+ (names core_windows_test subprocess)
+ (preprocess (pps ppx_jane)))
