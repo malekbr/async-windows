@@ -1,7 +1,7 @@
 open! Core_kernel
 open! Core_windows
 
-let test_header = printf "\nTesting %s\n========\n\n"
+let test_header s = printf "\nTesting %s\n========\n\n" s; Out_channel.flush stdout
 
 let () =
   test_header "get environment";
@@ -9,13 +9,18 @@ let () =
 
 let () =
   test_header "process";
-  let proc = Process.Low_level.caml_create_win_process ~command:"notepad.exe" in
-  print_endline "Waiting";
+  (* TODO not robust *)
+  let process_path = String.rsplit2_exn Sys.executable_name ~on:'\\' |> fst in
+  let command = process_path ^ "\\subprocess.exe" in 
+  let proc = Process.Low_level.caml_create_win_process ~command in
+  let io_handle = Process.Low_level.caml_stdout_win_process proc |> Io_handle.Private.of_ctype in
+  let result = Io_handle.read_all io_handle |> Bigstring.to_string in
+  print_endline "Subprocess output uppercased";
+  print_endline (String.uppercase result);
   Process.Low_level.caml_wait_win_process proc;
   print_endline "Test complete"
 ;;
 
-(* 
 let () =
   test_header "threads";
   let thread_fn i =
@@ -32,4 +37,3 @@ let () =
   print_endline "Joined"
 ;;
   
-*)

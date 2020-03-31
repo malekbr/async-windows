@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <string.h>
 #include <stdio.h>
+#include "io_handle_cstubs.h"
 
 typedef struct proc_info {
   PROCESS_INFORMATION process_information;
@@ -18,13 +19,10 @@ typedef struct proc_info {
   int cleaned;
 } proc_info;
 
-void cleanup (proc_info* proc_info) {
+static void cleanup (proc_info* proc_info) {
   if (!proc_info->cleaned) {
    CloseHandle(proc_info->process_information.hProcess);
    CloseHandle(proc_info->process_information.hThread);
-   CloseHandle(proc_info->startup_info.hStdInput);
-   CloseHandle(proc_info->startup_info.hStdOutput);
-   CloseHandle(proc_info->startup_info.hStdError);
    CloseHandle(proc_info->proc_stdin);
    CloseHandle(proc_info->proc_stdout);
    CloseHandle(proc_info->proc_stderr);
@@ -34,10 +32,10 @@ void cleanup (proc_info* proc_info) {
 
 #define Proc_info_val(v) (*((struct proc_info **) Data_custom_val(v)))
 
-void finalize_proc_info(value v) {
- // proc_info* proc_info = Proc_info_val(v);
- // cleanup(proc_info);
- // free(proc_info);
+static void finalize_proc_info(value v) {
+ proc_info* proc_info = Proc_info_val(v);
+ cleanup(proc_info);
+ free(proc_info);
 }
 
 static struct custom_operations proc_info_ops = {
@@ -51,7 +49,7 @@ static struct custom_operations proc_info_ops = {
   custom_fixed_length_default
 };
 
-void setup_pipe (HANDLE* rd, HANDLE* wr, SECURITY_ATTRIBUTES *attributes) {
+static void setup_pipe (HANDLE* rd, HANDLE* wr, SECURITY_ATTRIBUTES *attributes) {
     if ( ! CreatePipe(rd, wr, attributes, 0) ) {
       // TODO catch error, free already allocated, and return
       perror ("Failed to create pipe");
@@ -59,7 +57,7 @@ void setup_pipe (HANDLE* rd, HANDLE* wr, SECURITY_ATTRIBUTES *attributes) {
     }
 }
 
-void set_parent_handle(HANDLE hndl) {
+static void set_parent_handle(HANDLE hndl) {
    if ( ! SetHandleInformation(hndl, HANDLE_FLAG_INHERIT, 0) ) {
       // TODO catch error, free already allocated, and return
       perror ("Failed to set handle to parent");
@@ -67,7 +65,7 @@ void set_parent_handle(HANDLE hndl) {
     }
 }
 
-void setup_handles(proc_info * proc_info_obj) {
+static void setup_handles(proc_info * proc_info_obj) {
   SECURITY_ATTRIBUTES saAttr; 
 
   // Set the bInheritHandle flag so pipe handles are inherited. 
@@ -96,6 +94,13 @@ void setup_handles(proc_info * proc_info_obj) {
   startup_info->dwFlags |= STARTF_USESTDHANDLES;
 }
 
+static void close_child_handles (proc_info * proc_info_obj) {
+  STARTUPINFO* startup_info = &(proc_info_obj->startup_info);
+  CloseHandle(startup_info->hStdInput);
+  CloseHandle(startup_info->hStdOutput);
+  CloseHandle(startup_info->hStdError);
+}
+
 // TODO environment
 // command is space separated quoted
 CAMLprim value caml_create_win_process(value v_command) {
@@ -121,6 +126,9 @@ CAMLprim value caml_create_win_process(value v_command) {
       NULL,
       &(proc_info_obj->startup_info),
       &(proc_info_obj->process_information));
+
+  // TODO clean up pipes on fail 
+  close_child_handles(proc_info_obj);
 
   free(command);
 
@@ -153,4 +161,15 @@ CAMLprim value caml_wait_win_process(value v_proc_info) {
   WaitForSingleObject( proc_info_obj->process_information.hProcess, INFINITE );
   caml_acquire_runtime_system();
   CAMLreturn(Val_unit); 
+}
+
+CAMLprim value caml_stdout_win_process(value v_proc_info)  {
+  CAMLparam1(v_proc_info);
+  CAMLlocal1(v_result);
+  proc_info * proc_info_obj = Proc_info_val(v_proc_info);
+  caml_release_runtime_system();
+  io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stdout);
+  caml_acquire_runtime_system();
+  v_result =  caml_value_io_handle(io_handle_obj);
+  CAMLreturn(v_result);
 }

@@ -1,7 +1,10 @@
 open! Core_kernel
 
 module Low_level = struct
-  type c_proc_info
-  external caml_create_win_process : command:string -> c_proc_info = "caml_create_win_process"
-  external caml_wait_win_process : c_proc_info -> unit = "caml_wait_win_process"
+  type ctype
+  external caml_create_win_process : command:string -> ctype = "caml_create_win_process"
+  external caml_wait_win_process : ctype -> unit = "caml_wait_win_process"
+  external caml_stdout_win_process : ctype -> Io_handle.Low_level.ctype = "caml_stdout_win_process"
 end
+
+
