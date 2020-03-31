@@ -10,14 +10,24 @@ let () =
 let () =
   test_header "process";
   (* TODO not robust *)
+  (* TODO test read_all *)
   let process_path = String.rsplit2_exn Sys.executable_name ~on:'\\' |> fst in
   let command = process_path ^ "\\subprocess.exe" in 
   let proc = Process.Low_level.caml_create_win_process ~command in
-  let io_handle = Process.Low_level.caml_stdout_win_process proc |> Io_handle.Private.of_ctype in
-  let result = Io_handle.read_all io_handle |> Bigstring.to_string in
-  print_endline "Subprocess output uppercased";
-  print_endline (String.uppercase result);
+  let proc_stdout = Process.Low_level.caml_stdout_win_process proc |> Io_handle.Private.of_ctype_read in
+  let proc_stdin = Process.Low_level.caml_stdin_win_process proc |> Io_handle.Private.of_ctype_write in
+  let test input =
+    printf "Testing: %s" input;
+    Out_channel.flush stdout;
+    Io_handle.write proc_stdin input;
+    Io_handle.read_line proc_stdout |> printf "Result: %s\n";
+    Out_channel.flush stdout
+  in
+  test "(+ 1 2)\n";
+  test "(+ (* 2 3) 5)\n";
+  test "5\n";
   Process.Low_level.caml_wait_win_process proc;
+  (* TODO have a single io_handle per handle and close stdin *)
   print_endline "Test complete"
 ;;
 

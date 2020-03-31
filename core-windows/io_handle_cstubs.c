@@ -89,18 +89,41 @@ CAMLprim value caml_io_handle_read (value v_io_handle, value v_buffer, value v_p
   BOOL success = ReadFile(io_handle_obj->hndl, temp_buffer, at_most, &read, NULL);
   DWORD errorMessageID = GetLastError();
   // For pipes when the other pipe is closed, it just says the pipe is broken
-  if (!success & errorMessageID == ERROR_BROKEN_PIPE) {
+  if (!success && errorMessageID == ERROR_BROKEN_PIPE) {
     success = TRUE;
     read = 0;
   }
   caml_acquire_runtime_system();
-  int written;
+  int read_result;
   if (success) {
-    written = (int) read; // capped at int because at_most is int
-    memcpy(buffer + pos, temp_buffer, sizeof(char) * written); 
+    read_result = (int) read; // capped at int because at_most is int
+    memcpy(buffer + pos, temp_buffer, sizeof(char) * read_result); 
   } else {
-    written = -1;
+    read_result = -1;
   }
   free (temp_buffer);
-  CAMLreturn(Val_int(written));
+  CAMLreturn(Val_int(read_result));
+}
+
+// TODO should this be a bigstring?
+CAMLprim value caml_io_handle_write (value v_io_handle, value v_string, value v_len) {
+  CAMLparam3(v_io_handle, v_string, v_len);
+  io_handle* io_handle_obj = Io_handle_val(v_io_handle);
+  const char* caml_string = String_val(v_string);
+  int len = Int_val(v_len);
+  char* buffer = malloc(sizeof(char) * len); 
+  memcpy(buffer, caml_string, len);
+  caml_release_runtime_system();
+  // assumes no file is opened with overlapped
+  DWORD written;
+  BOOL success = WriteFile(io_handle_obj->hndl, buffer, len, &written, NULL);
+  caml_acquire_runtime_system();
+  int write_result;
+  free (buffer);
+  if (success && written == len) {
+    write_result = 1;
+  } else {
+    write_result = 0;
+  }
+  CAMLreturn(Val_bool(write_result));
 }

@@ -19,13 +19,22 @@ typedef struct proc_info {
   int cleaned;
 } proc_info;
 
+static void cleanup_handle(HANDLE* hndl) {
+  if (*hndl) {
+    CloseHandle(*hndl);
+    hndl = NULL;
+  }
+}
+
 static void cleanup (proc_info* proc_info) {
   if (!proc_info->cleaned) {
-   CloseHandle(proc_info->process_information.hProcess);
-   CloseHandle(proc_info->process_information.hThread);
-   CloseHandle(proc_info->proc_stdin);
-   CloseHandle(proc_info->proc_stdout);
-   CloseHandle(proc_info->proc_stderr);
+   // TODO add null checks and get rid of cleaned
+   // TODO single handle for stdin/stdout/stderr, drop the pipes
+   cleanup_handle(&(proc_info->process_information.hProcess));
+   cleanup_handle(&(proc_info->process_information.hThread));
+   cleanup_handle(&(proc_info->proc_stdin));
+   cleanup_handle(&(proc_info->proc_stdout));
+   cleanup_handle(&(proc_info->proc_stderr));
    proc_info->cleaned = 1;
   }
 }
@@ -163,12 +172,35 @@ CAMLprim value caml_wait_win_process(value v_proc_info) {
   CAMLreturn(Val_unit); 
 }
 
+// TODO unify
 CAMLprim value caml_stdout_win_process(value v_proc_info)  {
   CAMLparam1(v_proc_info);
   CAMLlocal1(v_result);
   proc_info * proc_info_obj = Proc_info_val(v_proc_info);
   caml_release_runtime_system();
   io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stdout);
+  caml_acquire_runtime_system();
+  v_result =  caml_value_io_handle(io_handle_obj);
+  CAMLreturn(v_result);
+}
+
+CAMLprim value caml_stderr_win_process(value v_proc_info)  {
+  CAMLparam1(v_proc_info);
+  CAMLlocal1(v_result);
+  proc_info * proc_info_obj = Proc_info_val(v_proc_info);
+  caml_release_runtime_system();
+  io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stderr);
+  caml_acquire_runtime_system();
+  v_result =  caml_value_io_handle(io_handle_obj);
+  CAMLreturn(v_result);
+}
+
+CAMLprim value caml_stdin_win_process(value v_proc_info)  {
+  CAMLparam1(v_proc_info);
+  CAMLlocal1(v_result);
+  proc_info * proc_info_obj = Proc_info_val(v_proc_info);
+  caml_release_runtime_system();
+  io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stdin);
   caml_acquire_runtime_system();
   v_result =  caml_value_io_handle(io_handle_obj);
   CAMLreturn(v_result);
