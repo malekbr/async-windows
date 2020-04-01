@@ -9,15 +9,13 @@
 #include <windows.h>
 #include <string.h>
 #include <stdio.h>
+#include "shared.h"
 #include "io_handle_cstubs.h"
 
 #define Io_handle_val(v) (*((struct io_handle **) Data_custom_val(v)))
 
 static void cleanup (io_handle* io_handle_obj) {
-  if (io_handle_obj->hndl) {
-   CloseHandle(io_handle_obj->hndl);
-   io_handle_obj->hndl = NULL;
-  }
+  safe_close_handle(&(io_handle_obj->hndl));
 }
 
 static void finalize_io_handle(value v) {
@@ -41,7 +39,7 @@ io_handle* io_handle_wrap_and_own (HANDLE hndl) {
   io_handle* io_handle_obj = malloc(sizeof(io_handle));
 
   if (!io_handle_obj) {
-    perror("[o_handle_wrap_and_own] failed to malloc");
+    perror("[io_handle_wrap_and_own] failed to malloc");
     exit(1);
   }
   
@@ -76,9 +74,16 @@ io_handle* io_handle_duplicate_handle (HANDLE hndl) {
     return NULL;
 }
 
+static void fail_if_null (io_handle* io_handle_obj) {
+  if (!io_handle_obj->hndl) {
+    caml_failwith("io_handle already closed");
+  }
+}
+
 CAMLprim value caml_io_handle_read (value v_io_handle, value v_buffer, value v_pos, value v_at_most) {
   CAMLparam4(v_io_handle, v_buffer, v_pos, v_at_most);
   io_handle* io_handle_obj = Io_handle_val(v_io_handle);
+  fail_if_null (io_handle_obj);
   char* buffer = Caml_ba_data_val(v_buffer);
   int at_most = Int_val(v_at_most);
   char* temp_buffer = malloc(sizeof(char) * at_most); 
@@ -109,6 +114,7 @@ CAMLprim value caml_io_handle_read (value v_io_handle, value v_buffer, value v_p
 CAMLprim value caml_io_handle_write (value v_io_handle, value v_string, value v_len) {
   CAMLparam3(v_io_handle, v_string, v_len);
   io_handle* io_handle_obj = Io_handle_val(v_io_handle);
+  fail_if_null (io_handle_obj);
   const char* caml_string = String_val(v_string);
   int len = Int_val(v_len);
   char* buffer = malloc(sizeof(char) * len); 
@@ -126,4 +132,14 @@ CAMLprim value caml_io_handle_write (value v_io_handle, value v_string, value v_
     write_result = 0;
   }
   CAMLreturn(Val_bool(write_result));
+}
+
+CAMLprim value caml_io_handle_close(value v_io_handle) {
+  CAMLparam1(v_io_handle);
+  io_handle* io_handle_obj = Io_handle_val(v_io_handle);
+  fail_if_null (io_handle_obj);
+  caml_release_runtime_system();
+  cleanup(io_handle_obj);
+  caml_acquire_runtime_system();
+  CAMLreturn(Val_unit);
 }

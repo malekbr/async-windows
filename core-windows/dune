@@ -2,7 +2,7 @@
  (name core_windows)
  (libraries threads core_kernel expect_test_helpers_kernel)
  (inline_tests)
- (foreign_stubs (language c) (names c_stubs time_cstubs environment_cstubs process_cstubs io_handle_cstubs)
+ (foreign_stubs (language c) (names c_stubs time_cstubs environment_cstubs process_cstubs io_handle_cstubs shared)
   (flags :standard -Wall)
 )
  (preprocess (pps ppx_jane ppx_inline_test)))

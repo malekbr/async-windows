@@ -5,6 +5,7 @@ module Low_level = struct
 
   external caml_io_handle_read : ctype -> Bigstring.t -> pos:int -> at_most:int -> int = "caml_io_handle_read"
   external caml_io_handle_write : ctype -> string -> len:int -> bool = "caml_io_handle_write"
+  external caml_io_handle_close : ctype -> unit = "caml_io_handle_close"
 end
 
 module Read = struct
@@ -73,6 +74,8 @@ module Read = struct
     in
     read_until_newline t 0
   ;;
+
+  let close t = Low_level.caml_io_handle_close t.low_level
 end
 
 module Write = struct
@@ -83,6 +86,8 @@ module Write = struct
     if not (Low_level.caml_io_handle_write t.low_level ~len str) then
       raise_s [%message "Failed to write"]
   ;;
+
+  let close t = Low_level.caml_io_handle_close t.low_level
 end
 
 type t =
@@ -102,6 +107,11 @@ let write_handle_exn = function
 let read_all t = read_handle_exn t |> Read.read_all
 let read_line t = read_handle_exn t |> Read.read_line
 let write t s = Write.write (write_handle_exn t) s
+
+let close = function
+  | Read read -> Read.close read
+  | Write write -> Write.close write
+;;
 
 module Private = struct
   let of_ctype_read low_level = Read { low_level; buffer = Bigstring.create 128; pos = 0; eof = false }

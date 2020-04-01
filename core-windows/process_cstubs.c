@@ -8,35 +8,24 @@
 #include <windows.h>
 #include <string.h>
 #include <stdio.h>
+#include "shared.h"
 #include "io_handle_cstubs.h"
 
 typedef struct proc_info {
   PROCESS_INFORMATION process_information;
   STARTUPINFO startup_info;
-  HANDLE proc_stdin;
-  HANDLE proc_stdout;
-  HANDLE proc_stderr;
-  int cleaned;
+  io_handle* proc_stdin;
+  io_handle* proc_stdout;
+  io_handle* proc_stderr;
 } proc_info;
 
-static void cleanup_handle(HANDLE* hndl) {
-  if (*hndl) {
-    CloseHandle(*hndl);
-    hndl = NULL;
-  }
-}
-
 static void cleanup (proc_info* proc_info) {
-  if (!proc_info->cleaned) {
-   // TODO add null checks and get rid of cleaned
-   // TODO single handle for stdin/stdout/stderr, drop the pipes
-   cleanup_handle(&(proc_info->process_information.hProcess));
-   cleanup_handle(&(proc_info->process_information.hThread));
-   cleanup_handle(&(proc_info->proc_stdin));
-   cleanup_handle(&(proc_info->proc_stdout));
-   cleanup_handle(&(proc_info->proc_stderr));
-   proc_info->cleaned = 1;
-  }
+ // TODO add null checks and get rid of cleaned
+ // TODO single handle for stdin/stdout/stderr, drop the pipes
+ safe_close_handle(&(proc_info->process_information.hProcess));
+ safe_close_handle(&(proc_info->process_information.hThread));
+ // proc_stdin/proc_stdout/proc_stderr will be closed by 
+ // the io_handle ocaml object finalizer
 }
 
 #define Proc_info_val(v) (*((struct proc_info **) Data_custom_val(v)))
@@ -86,14 +75,21 @@ static void setup_handles(proc_info * proc_info_obj) {
   HANDLE child_stdin = NULL;
   HANDLE child_stdout = NULL;
   HANDLE child_stderr = NULL;
+  HANDLE proc_stdin = NULL;
+  HANDLE proc_stdout = NULL;
+  HANDLE proc_stderr = NULL;
 
-  setup_pipe(&child_stdin, &(proc_info_obj->proc_stdin), &saAttr);
-  setup_pipe(&(proc_info_obj->proc_stdout), &child_stdout, &saAttr);
-  setup_pipe(&(proc_info_obj->proc_stderr), &child_stderr, &saAttr);
+  setup_pipe(&child_stdin, &proc_stdin, &saAttr);
+  setup_pipe(&proc_stdout, &child_stdout, &saAttr);
+  setup_pipe(&proc_stderr, &child_stderr, &saAttr);
 
-  set_parent_handle(proc_info_obj->proc_stdin);
-  set_parent_handle(proc_info_obj->proc_stdout);
-  set_parent_handle(proc_info_obj->proc_stderr);
+  set_parent_handle(proc_stdin);
+  set_parent_handle(proc_stdout);
+  set_parent_handle(proc_stderr);
+
+  proc_info_obj->proc_stdin = io_handle_wrap_and_own(proc_stdin);
+  proc_info_obj->proc_stdout = io_handle_wrap_and_own(proc_stdout);
+  proc_info_obj->proc_stderr = io_handle_wrap_and_own(proc_stderr);
 
   STARTUPINFO* startup_info = &(proc_info_obj->startup_info);
   startup_info->cb = sizeof(STARTUPINFO); 
@@ -162,6 +158,7 @@ CAMLprim value caml_create_win_process(value v_command) {
   Proc_info_val(v_proc_info) = proc_info_obj;
   CAMLreturn(v_proc_info); 
 }
+// TODO everything can fail here, check return code
 
 CAMLprim value caml_wait_win_process(value v_proc_info) {
   CAMLparam1(v_proc_info);
@@ -172,26 +169,22 @@ CAMLprim value caml_wait_win_process(value v_proc_info) {
   CAMLreturn(Val_unit); 
 }
 
+CAMLprim value caml_exit_code_win_process(value v_proc_info) {
+  CAMLparam1(v_proc_info);
+  proc_info * proc_info_obj = Proc_info_val(v_proc_info);
+  caml_release_runtime_system();
+  DWORD exit_code;
+  GetExitCodeProcess( proc_info_obj->process_information.hProcess, &exit_code );
+  caml_acquire_runtime_system();
+  CAMLreturn(Val_int(exit_code)); 
+}
+
 // TODO unify
 CAMLprim value caml_stdout_win_process(value v_proc_info)  {
   CAMLparam1(v_proc_info);
   CAMLlocal1(v_result);
   proc_info * proc_info_obj = Proc_info_val(v_proc_info);
-  caml_release_runtime_system();
-  io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stdout);
-  caml_acquire_runtime_system();
-  v_result =  caml_value_io_handle(io_handle_obj);
-  CAMLreturn(v_result);
-}
-
-CAMLprim value caml_stderr_win_process(value v_proc_info)  {
-  CAMLparam1(v_proc_info);
-  CAMLlocal1(v_result);
-  proc_info * proc_info_obj = Proc_info_val(v_proc_info);
-  caml_release_runtime_system();
-  io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stderr);
-  caml_acquire_runtime_system();
-  v_result =  caml_value_io_handle(io_handle_obj);
+  v_result =  caml_value_io_handle(proc_info_obj->proc_stdout);
   CAMLreturn(v_result);
 }
 
@@ -199,9 +192,14 @@ CAMLprim value caml_stdin_win_process(value v_proc_info)  {
   CAMLparam1(v_proc_info);
   CAMLlocal1(v_result);
   proc_info * proc_info_obj = Proc_info_val(v_proc_info);
-  caml_release_runtime_system();
-  io_handle* io_handle_obj = io_handle_duplicate_handle(proc_info_obj->proc_stdin);
-  caml_acquire_runtime_system();
-  v_result =  caml_value_io_handle(io_handle_obj);
+  v_result =  caml_value_io_handle(proc_info_obj->proc_stdin);
+  CAMLreturn(v_result);
+}
+
+CAMLprim value caml_stderr_win_process(value v_proc_info)  {
+  CAMLparam1(v_proc_info);
+  CAMLlocal1(v_result);
+  proc_info * proc_info_obj = Proc_info_val(v_proc_info);
+  v_result =  caml_value_io_handle(proc_info_obj->proc_stderr);
   CAMLreturn(v_result);
 }

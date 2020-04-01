@@ -7,27 +7,56 @@ let () =
   test_header "get environment";
   Environment.get_environment () |> [%sexp_of: Environment.All_environment.t] |> print_s
 
-let () =
-  test_header "process";
-  (* TODO not robust *)
-  (* TODO test read_all *)
+let with_test_subprocess ~f =
+  (* TODO not robust add path utils *)
   let process_path = String.rsplit2_exn Sys.executable_name ~on:'\\' |> fst in
   let command = process_path ^ "\\subprocess.exe" in 
-  let proc = Process.Low_level.caml_create_win_process ~command in
-  let proc_stdout = Process.Low_level.caml_stdout_win_process proc |> Io_handle.Private.of_ctype_read in
-  let proc_stdin = Process.Low_level.caml_stdin_win_process proc |> Io_handle.Private.of_ctype_write in
-  let test input =
-    printf "Testing: %s" input;
-    Out_channel.flush stdout;
-    Io_handle.write proc_stdin input;
-    Io_handle.read_line proc_stdout |> printf "Result: %s\n";
-    Out_channel.flush stdout
-  in
-  test "(+ 1 2)\n";
-  test "(+ (* 2 3) 5)\n";
-  test "5\n";
-  Process.Low_level.caml_wait_win_process proc;
-  (* TODO have a single io_handle per handle and close stdin *)
+  let proc = Process.create ~command in
+  f proc;
+  Process.wait proc;
+  let exit_code = Process.exit_code proc in
+  printf "Exit code: %d\n" exit_code;
+  Out_channel.flush stdout
+;;
+
+
+let () =
+  test_header "process";
+  (* TODO test read_all *)
+  with_test_subprocess ~f:(fun proc ->
+    let proc_stdout = Process.stdout proc in
+    let proc_stdin = Process.stdin proc in
+    let test input =
+      printf "Testing: %s" input;
+      Out_channel.flush stdout;
+      Io_handle.write proc_stdin input;
+      Io_handle.read_line proc_stdout |> printf "Result: %s\n";
+      Out_channel.flush stdout
+    in
+    test "(+ 1 2)\n";
+    test "(+ (* 2 3) 5)\n";
+    test "5\n";
+    Io_handle.close proc_stdin);
+  print_endline "Test complete"
+;;
+
+let () =
+  test_header "process stderr";
+  with_test_subprocess ~f:(fun proc ->
+    let proc_stderr = Process.stderr proc in
+    let proc_stdout = Process.stdout proc in
+    let proc_stdin = Process.stdin proc in
+    let stdin_input = "(+ 1 2)\n5\n(broken\n" in
+    Io_handle.write proc_stdin stdin_input;
+    let stdout = Io_handle.read_all proc_stdout in
+    let stderr = Io_handle.read_all proc_stderr in
+    Process.wait proc;
+    print_endline "STDIN:";
+    print_endline stdin_input;
+    print_endline "STDOUT:";
+    print_endline stdout;
+    print_endline "STDERR:";
+    print_endline stderr);
   print_endline "Test complete"
 ;;
 
