@@ -4,15 +4,15 @@ external caml_set_env : string -> string -> int = "caml_set_env"
 external caml_unset_env : string -> int = "caml_unset_env"
 external caml_get_env_string : unit-> string = "caml_get_env_string"
 
-let get_env ~key = Sys.getenv_opt key
+let getenv key = Sys.getenv_opt key
 
-let set_env ~key ~value =
-  let result = caml_set_env key value in
+let putenv ~key ~data =
+  let result = caml_set_env key data in
   if result = 0 then
-    raise_s [%message "Failed to set environment variable" (key : string) (value : string)]
+    raise_s [%message "Failed to set environment variable" (key : string) (data : string)]
 ;;
 
-let unset_env ~key =
+let unsetenv key =
   let result = caml_unset_env key in
   if result = 0 then
     raise_s [%message "Failed to unset environment variable" (key : string)]
@@ -22,7 +22,7 @@ module All_environment = struct
   module Entry = struct
     type t =
       | Unparsable of string
-      | Pair of { key : string; value : string }
+      | Pair of { key : string; data : string }
     [@@deriving sexp_of]
   end
 
@@ -36,20 +36,20 @@ let get_environment () =
       else
         (match String.lsplit2 s ~on:'=' with
          | None -> Unparsable s
-         | Some (key, value) -> Pair { key; value }))
+         | Some (key, data) -> Pair { key; data }))
 ;;
 
 let%test "get for unknown variable" =
-  get_env ~key:"test-for-windows-async" |> Option.is_none
+  getenv "test-for-windows-async" |> Option.is_none
 ;;
 
 let%test "setting variable" =
-  set_env ~key:"test-for-windows-async" ~value:"test";
-  get_env ~key:"test-for-windows-async" |> [%equal: string option] (Some "test")
+  putenv ~key:"test-for-windows-async" ~data:"test";
+  getenv "test-for-windows-async" |> [%equal: string option] (Some "test")
 ;;
 
 let%test "unsetting variable" =
-  set_env ~key:"test-for-windows-async" ~value:"test";
-  unset_env ~key:"test-for-windows-async"; 
-  get_env ~key:"test-for-windows-async" |> Option.is_none
+  putenv ~key:"test-for-windows-async" ~data:"test";
+  unsetenv "test-for-windows-async"; 
+  getenv "test-for-windows-async" |> Option.is_none
 ;;

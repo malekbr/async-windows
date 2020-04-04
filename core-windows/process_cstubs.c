@@ -10,13 +10,15 @@
 #include <stdio.h>
 #include "shared.h"
 #include "io_handle_cstubs.h"
+// TODO this comes from otherlibs/win32unix/unixsupport.h
+extern value win_alloc_handle(HANDLE);
 
 typedef struct proc_info {
   PROCESS_INFORMATION process_information;
   STARTUPINFO startup_info;
-  io_handle* proc_stdin;
-  io_handle* proc_stdout;
-  io_handle* proc_stderr;
+  HANDLE proc_stdin;
+  HANDLE proc_stdout;
+  HANDLE proc_stderr;
 } proc_info;
 
 static void cleanup (proc_info* proc_info) {
@@ -25,8 +27,9 @@ static void cleanup (proc_info* proc_info) {
  safe_close_handle(&(proc_info->process_information.hProcess));
  safe_close_handle(&(proc_info->process_information.hThread));
  // proc_stdin/proc_stdout/proc_stderr will be closed by 
- // the io_handle ocaml object finalizer
+ // the channel ocaml object finalizer
 }
+// TODO use file descriptors using _open_osfhandle
 
 #define Proc_info_val(v) (*((struct proc_info **) Data_custom_val(v)))
 
@@ -87,9 +90,10 @@ static void setup_handles(proc_info * proc_info_obj) {
   set_parent_handle(proc_stdout);
   set_parent_handle(proc_stderr);
 
-  proc_info_obj->proc_stdin = io_handle_wrap_and_own(proc_stdin);
-  proc_info_obj->proc_stdout = io_handle_wrap_and_own(proc_stdout);
-  proc_info_obj->proc_stderr = io_handle_wrap_and_own(proc_stderr);
+
+  proc_info_obj->proc_stdin = proc_stdin;
+  proc_info_obj->proc_stdout = proc_stdout;
+  proc_info_obj->proc_stderr = proc_stderr;
 
   STARTUPINFO* startup_info = &(proc_info_obj->startup_info);
   startup_info->cb = sizeof(STARTUPINFO); 
@@ -184,7 +188,7 @@ CAMLprim value caml_stdout_win_process(value v_proc_info)  {
   CAMLparam1(v_proc_info);
   CAMLlocal1(v_result);
   proc_info * proc_info_obj = Proc_info_val(v_proc_info);
-  v_result =  caml_value_io_handle(proc_info_obj->proc_stdout);
+  v_result = win_alloc_handle(proc_info_obj->proc_stdout);
   CAMLreturn(v_result);
 }
 
@@ -192,7 +196,7 @@ CAMLprim value caml_stdin_win_process(value v_proc_info)  {
   CAMLparam1(v_proc_info);
   CAMLlocal1(v_result);
   proc_info * proc_info_obj = Proc_info_val(v_proc_info);
-  v_result =  caml_value_io_handle(proc_info_obj->proc_stdin);
+  v_result = win_alloc_handle(proc_info_obj->proc_stdin);
   CAMLreturn(v_result);
 }
 
@@ -200,6 +204,6 @@ CAMLprim value caml_stderr_win_process(value v_proc_info)  {
   CAMLparam1(v_proc_info);
   CAMLlocal1(v_result);
   proc_info * proc_info_obj = Proc_info_val(v_proc_info);
-  v_result =  caml_value_io_handle(proc_info_obj->proc_stderr);
+  v_result = win_alloc_handle(proc_info_obj->proc_stderr);
   CAMLreturn(v_result);
 }

@@ -1,4 +1,4 @@
 (executables
  (libraries core_windows)
- (names core_windows_test subprocess)
+ (names core_windows_test subprocess command)
  (preprocess (pps ppx_jane)))
